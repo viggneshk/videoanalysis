@@ -151,6 +151,7 @@ def estimate_cost(num_frames, avg_tokens_per_frame=765, output_tokens=1000, mode
         "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
         "gpt-4-turbo": {"input": 0.01, "output": 0.03},
         "gpt-4": {"input": 0.03, "output": 0.06},
+        "gpt-4.5-turbo": {"input": 0.01, "output": 0.03},
         "o1": {"input": 0.018, "output": 0.06}
     }
     
@@ -193,6 +194,12 @@ def get_model_info(model_name):
             "strengths": "High quality instruction following",
             "pricing_note": "$0.03/1K input tokens, $0.06/1K output tokens"
         },
+        "gpt-4.5-turbo": {
+            "description": "Newest GPT-4.5 with vision capabilities",
+            "context_window": "128,000 tokens",
+            "strengths": "Cutting-edge reasoning abilities",
+            "pricing_note": "$0.01/1K input tokens, $0.03/1K output tokens"
+        },
         "o1": {
             "description": "High intelligence reasoning model with vision capabilities",
             "context_window": "128,000 tokens",
@@ -234,14 +241,24 @@ def main():
         # Try to get API key from Streamlit secrets - handle different formats
         try:
             # First check for nested format with 'openai' section
-            if hasattr(st, 'secrets') and 'openai' in st.secrets and 'OPENAI_API_KEY' in st.secrets.openai:
-                st.session_state.api_key = st.secrets.openai.OPENAI_API_KEY
-            # Then check for direct API key at top level
-            elif hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
-                st.session_state.api_key = st.secrets.OPENAI_API_KEY
+            if hasattr(st, 'secrets'):
+                try:
+                    if hasattr(st.secrets, 'openai') and hasattr(st.secrets.openai, 'OPENAI_API_KEY'):
+                        st.session_state.api_key = st.secrets.openai.OPENAI_API_KEY
+                    # Then check for direct API key at top level
+                    elif hasattr(st.secrets, 'OPENAI_API_KEY'):
+                        st.session_state.api_key = st.secrets.OPENAI_API_KEY
+                    else:
+                        st.session_state.api_key = ""
+                except Exception as e:
+                    # Log the error to console for debugging
+                    print(f"Error accessing secrets: {str(e)}")
+                    st.session_state.api_key = ""
             else:
                 st.session_state.api_key = ""
-        except:
+        except Exception as e:
+            # Log the error to console for debugging
+            print(f"Error in API key retrieval: {str(e)}")
             st.session_state.api_key = ""
     
     # Apply global CSS for a more compact layout
@@ -281,32 +298,42 @@ def main():
         # Debug info in a collapsible section
         with st.expander("Debug Information (for troubleshooting)", expanded=False):
             st.write("Debug: Checking Streamlit Secrets Configuration")
-            if hasattr(st, 'secrets'):
-                available_keys = [key for key in st.secrets.keys()]
-                st.write(f"Available top-level keys: {available_keys}")
+            try:
+                if hasattr(st, 'secrets'):
+                    # Check if secrets has the keys method before trying to access it
+                    if hasattr(st.secrets, 'keys'):
+                        try:
+                            available_keys = [key for key in st.secrets.keys()]
+                            st.write(f"Available top-level keys: {available_keys}")
+                            
+                            if 'OPENAI_API_KEY' in st.secrets:
+                                masked_key = st.secrets.OPENAI_API_KEY[:5] + "..." + st.secrets.OPENAI_API_KEY[-4:]
+                                st.write(f"Direct API key found: {masked_key}")
+                            
+                            if 'openai' in st.secrets:
+                                st.write("'openai' section found")
+                                if hasattr(st.secrets.openai, 'OPENAI_API_KEY'):
+                                    nested_key = st.secrets.openai.OPENAI_API_KEY[:5] + "..." + st.secrets.openai.OPENAI_API_KEY[-4:]
+                                    st.write(f"Nested API key found: {nested_key}")
+                        except Exception as e:
+                            st.write(f"Error accessing secrets keys: {str(e)}")
+                    else:
+                        st.write("Secrets object exists but doesn't have expected methods")
+                else:
+                    st.write("No Streamlit secrets available")
                 
-                if 'OPENAI_API_KEY' in st.secrets:
-                    masked_key = st.secrets.OPENAI_API_KEY[:5] + "..." + st.secrets.OPENAI_API_KEY[-4:]
-                    st.write(f"Direct API key found: {masked_key}")
+                st.write("If you're seeing this debug info, the API key was not loaded properly.")
+                st.write("Instructions for setting up secrets:")
+                st.code("""
+                # For direct API key (what you have now):
+                OPENAI_API_KEY = "sk-your-key-here"
                 
-                if 'openai' in st.secrets:
-                    st.write("'openai' section found")
-                    if hasattr(st.secrets.openai, 'OPENAI_API_KEY'):
-                        nested_key = st.secrets.openai.OPENAI_API_KEY[:5] + "..." + st.secrets.openai.OPENAI_API_KEY[-4:]
-                        st.write(f"Nested API key found: {nested_key}")
-            else:
-                st.write("No Streamlit secrets available")
-                
-            st.write("If you're seeing this debug info, the API key was not loaded properly.")
-            st.write("Instructions for setting up secrets:")
-            st.code("""
-            # For direct API key (what you have now):
-            OPENAI_API_KEY = "sk-your-key-here"
-            
-            # For nested format (what our code checked first):
-            [openai]
-            OPENAI_API_KEY = "sk-your-key-here"
-            """)
+                # For nested format (what our code checked first):
+                [openai]
+                OPENAI_API_KEY = "sk-your-key-here"
+                """)
+            except Exception as e:
+                st.write(f"Debug error: {str(e)}")
         
         # Simple API key input at the top
         api_key = st.text_input(
@@ -360,6 +387,7 @@ def main():
         | **GPT-4o** | Balanced performance | 128K tokens | $$ | General purpose analysis |
         | **GPT-4-turbo** | Higher quality | 128K tokens | $$$ | Detailed video analysis |
         | **GPT-4** | Original GPT-4 | 8K tokens | $$$$ | High quality, shorter videos |
+        | **GPT-4.5-turbo** | Newest GPT-4.5 | 128K tokens | $$$$$ | Advanced reasoning |
         | **o1** | Advanced reasoning | 128K tokens | $$$$$ | Complex analysis tasks |
         
         *Note: Costs are relative and actual costs will depend on video length and complexity.*
@@ -372,7 +400,7 @@ def main():
     with param_cols[0]:
         model = st.selectbox(
             "Model",
-            options=["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "o1"],
+            options=["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4.5-turbo", "gpt-4", "o1"],
             index=0,
             key="model_selector",
             on_change=lambda: setattr(st.session_state, 'model', st.session_state.model_selector),
@@ -421,7 +449,7 @@ def main():
         st.markdown("#### Cost Comparison For Current Settings")
         
         # Calculate costs for all models with current settings
-        models = ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-4", "o1"]
+        models = ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-4.5-turbo", "gpt-4", "o1"]
         costs = []
         for m in models:
             cost, _ = estimate_cost(frames_estimate, model=m)
@@ -445,7 +473,7 @@ def main():
         with col1:
             system_prompt = st.text_area(
                 "System Prompt",
-                value="As a youth baseball coach, your primary goal is to provide clear, encouraging, and actionable feedback to help young athletes improve. If an athlete uploads multiple videos, avoid responding with the exact same sentence each time. Even if they need to hear the same feedback, make sure to rephrase it so they’re not reading the same wording over and over.",
+                value="As a youth baseball coach, your primary goal is to provide clear, encouraging, and actionable feedback to help young athletes improve. If an athlete uploads multiple videos, avoid responding with the exact same sentence each time. Even if they need to hear the same feedback, make sure to rephrase it so they're not reading the same wording over and over.",
                 height=100
             )
             
