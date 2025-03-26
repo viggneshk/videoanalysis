@@ -352,7 +352,7 @@ def main():
         with col1:
             system_prompt = st.text_area(
                 "System Prompt",
-                value="You are a video analysis assistant powered by GPT-4o. Analyze the frames from the video and provide detailed insights.",
+                value="As a youth baseball coach, your primary goal is to provide clear, encouraging, and actionable feedback to help young athletes improve. If an athlete uploads multiple videos, avoid responding with the exact same sentence each time. Even if they need to hear the same feedback, make sure to rephrase it so they’re not reading the same wording over and over.",
                 height=100
             )
             
