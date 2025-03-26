@@ -12,8 +12,18 @@ import base64
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Initialize OpenAI client - try multiple sources for API key
+openai_api_key = os.environ.get("OPENAI_API_KEY")
+
+# If not found in environment, try to get from Streamlit secrets
+if not openai_api_key:
+    try:
+        openai_api_key = st.secrets["openai"]["OPENAI_API_KEY"]
+    except:
+        openai_api_key = None
+
+# Initialize client with the API key
+client = OpenAI(api_key=openai_api_key)
 
 def extract_frames(video_path, max_frames=20, extract_all=False):
     """Extract frames from a video file"""
@@ -69,6 +79,10 @@ def encode_image_to_base64(image_array):
         
 def analyze_video(frames, system_prompt, client_prompt, temperature, max_api_frames=50, model="gpt-4o"):
     """Analyze video frames using OpenAI's API"""
+    
+    # Check that the client is properly initialized
+    if not openai_api_key:
+        raise ValueError("OpenAI API key is not set. Please configure it in the app settings.")
     
     # Limit the number of frames sent to the API
     if len(frames) > max_api_frames:
@@ -217,9 +231,23 @@ def main():
     st.write("Upload a video to analyze it using OpenAI's GPT-4o Vision model.")
     
     # Check for API key
-    if not os.environ.get("OPENAI_API_KEY"):
-        st.error("⚠️ OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
-        st.info("You can set this by creating a .env file with OPENAI_API_KEY=your_key or setting it in your environment.")
+    if not openai_api_key:
+        st.error("⚠️ OpenAI API key not found. Please set the OPENAI_API_KEY in Streamlit secrets.")
+        st.info("""
+        ### How to add your API key:
+        
+        #### For local development:
+        Create a .env file with: `OPENAI_API_KEY=your_key`
+        
+        #### For Streamlit Cloud:
+        1. Go to your app settings (⋮ menu)
+        2. Click on 'Secrets'
+        3. Add the following:
+        ```
+        [openai]
+        OPENAI_API_KEY = "sk-your-actual-api-key-here"
+        ```
+        """)
         return
     
     # File uploader
