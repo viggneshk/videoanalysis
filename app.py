@@ -12,18 +12,23 @@ import base64
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client - try multiple sources for API key
-openai_api_key = os.environ.get("OPENAI_API_KEY")
+# We'll initialize the OpenAI client later in the main function
+# This prevents issues with Streamlit's module loading process
+client = None
 
-# If not found in environment, try to get from Streamlit secrets
-if not openai_api_key:
-    try:
-        openai_api_key = st.secrets["openai"]["OPENAI_API_KEY"]
-    except:
-        openai_api_key = None
-
-# Initialize client with the API key
-client = OpenAI(api_key=openai_api_key)
+def get_openai_client():
+    """Get an initialized OpenAI client with the appropriate API key"""
+    # Try to get API key from environment variables first
+    api_key = os.environ.get("OPENAI_API_KEY")
+    
+    # If not in environment, try to get from Streamlit secrets
+    if not api_key and hasattr(st, 'secrets') and 'openai' in st.secrets:
+        api_key = st.secrets.openai.OPENAI_API_KEY
+    
+    # Create and return client if we have an API key
+    if api_key:
+        return OpenAI(api_key=api_key)
+    return None
 
 def extract_frames(video_path, max_frames=20, extract_all=False):
     """Extract frames from a video file"""
@@ -80,8 +85,11 @@ def encode_image_to_base64(image_array):
 def analyze_video(frames, system_prompt, client_prompt, temperature, max_api_frames=50, model="gpt-4o"):
     """Analyze video frames using OpenAI's API"""
     
+    # Get a fresh client
+    client = get_openai_client()
+    
     # Check that the client is properly initialized
-    if not openai_api_key:
+    if not client:
         raise ValueError("OpenAI API key is not set. Please configure it in the app settings.")
     
     # Limit the number of frames sent to the API
@@ -189,6 +197,10 @@ def get_model_info(model_name):
 def main():
     st.set_page_config(page_title="Video Analysis with OpenAI", page_icon="🎬", layout="wide")
     
+    # Initialize the OpenAI client at runtime
+    global client
+    client = get_openai_client()
+    
     # Initialize session state for tracking values
     if 'max_frames' not in st.session_state:
         st.session_state.max_frames = 10
@@ -231,7 +243,7 @@ def main():
     st.write("Upload a video to analyze it using OpenAI's GPT-4o Vision model.")
     
     # Check for API key
-    if not openai_api_key:
+    if not client:
         st.error("⚠️ OpenAI API key not found. Please set the OPENAI_API_KEY in Streamlit secrets.")
         st.info("""
         ### How to add your API key:
