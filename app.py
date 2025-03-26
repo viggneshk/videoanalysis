@@ -18,7 +18,11 @@ client = None
 
 def get_openai_client():
     """Get an initialized OpenAI client with the appropriate API key"""
-    # Try to get API key from environment variables first
+    # First check if user has manually entered an API key in the app
+    if 'user_api_key' in st.session_state and st.session_state.user_api_key:
+        return OpenAI(api_key=st.session_state.user_api_key)
+    
+    # Try to get API key from environment variables next
     api_key = os.environ.get("OPENAI_API_KEY")
     
     # If not in environment, try to get from Streamlit secrets
@@ -197,10 +201,6 @@ def get_model_info(model_name):
 def main():
     st.set_page_config(page_title="Video Analysis with OpenAI", page_icon="🎬", layout="wide")
     
-    # Initialize the OpenAI client at runtime
-    global client
-    client = get_openai_client()
-    
     # Initialize session state for tracking values
     if 'max_frames' not in st.session_state:
         st.session_state.max_frames = 10
@@ -212,6 +212,12 @@ def main():
         st.session_state.model = "gpt-4o"
     if 'show_comparison' not in st.session_state:
         st.session_state.show_comparison = False
+    if 'user_api_key' not in st.session_state:
+        st.session_state.user_api_key = ""
+    
+    # Initialize the OpenAI client at runtime
+    global client
+    client = get_openai_client()
     
     # Apply global CSS for a more compact layout
     st.markdown("""
@@ -244,21 +250,28 @@ def main():
     
     # Check for API key
     if not client:
-        st.error("⚠️ OpenAI API key not found. Please set the OPENAI_API_KEY in Streamlit secrets.")
+        st.error("⚠️ OpenAI API key not found. Please enter your API key below.")
+        api_key_col1, api_key_col2 = st.columns([3, 1])
+        with api_key_col1:
+            user_api_key = st.text_input(
+                "OpenAI API Key",
+                type="password",
+                value=st.session_state.user_api_key,
+                help="Your API key will be stored in the browser session and not saved on the server."
+            )
+        with api_key_col2:
+            if st.button("Save API Key"):
+                if user_api_key and user_api_key.startswith("sk-"):
+                    st.session_state.user_api_key = user_api_key
+                    st.experimental_rerun()
+                else:
+                    st.error("Please enter a valid OpenAI API key starting with 'sk-'")
+    
         st.info("""
-        ### How to add your API key:
+        You need an OpenAI API key with access to GPT-4 Vision models.
+        Get your API key from [OpenAI's website](https://platform.openai.com/api-keys).
         
-        #### For local development:
-        Create a .env file with: `OPENAI_API_KEY=your_key`
-        
-        #### For Streamlit Cloud:
-        1. Go to your app settings (⋮ menu)
-        2. Click on 'Secrets'
-        3. Add the following:
-        ```
-        [openai]
-        OPENAI_API_KEY = "sk-your-actual-api-key-here"
-        ```
+        Your API key will only be used for this session and is not stored on our servers.
         """)
         return
     
