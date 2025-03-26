@@ -68,7 +68,16 @@ def analyze_video(frames, system_prompt, client_prompt, temperature, api_key, ma
     """Analyze video frames using OpenAI's API"""
     
     # Initialize a new client instance specifically for this analysis
-    client = OpenAI(api_key=api_key)
+    # Handle the 'proxies' error by setting specific parameters
+    try:
+        client = OpenAI(api_key=api_key)
+    except TypeError as e:
+        if 'proxies' in str(e):
+            # If there's a proxies error, try without any additional parameters
+            client = OpenAI()
+            client.api_key = api_key
+        else:
+            raise e
     
     # Limit the number of frames sent to the API
     if len(frames) > max_api_frames:
