@@ -69,6 +69,10 @@ def encode_image_to_base64(image_array):
 def analyze_video(frames, system_prompt, client_prompt, temperature, api_key, max_api_frames=50, model="gpt-4o"):
     """Analyze video frames using OpenAI's API"""
     
+    # Ensure we have a valid API key
+    if not api_key or not api_key.startswith("sk-"):
+        raise ValueError("Invalid OpenAI API key. Please check your API key configuration.")
+    
     # Limit the number of frames sent to the API
     if len(frames) > max_api_frames:
         # Sample frames evenly
@@ -219,7 +223,14 @@ def main():
     if 'show_comparison' not in st.session_state:
         st.session_state.show_comparison = False
     if 'api_key' not in st.session_state:
-        st.session_state.api_key = ""
+        # Try to get API key from Streamlit secrets first
+        try:
+            if hasattr(st, 'secrets') and 'openai' in st.secrets and 'OPENAI_API_KEY' in st.secrets.openai:
+                st.session_state.api_key = st.secrets.openai.OPENAI_API_KEY
+            else:
+                st.session_state.api_key = ""
+        except:
+            st.session_state.api_key = ""
     
     # Apply global CSS for a more compact layout
     st.markdown("""
@@ -250,32 +261,40 @@ def main():
     st.title("Video Analysis with OpenAI Vision")
     st.write("Upload a video to analyze it using OpenAI's GPT-4o Vision model.")
     
-    # Simple API key input at the top
-    api_key = st.text_input(
-        "OpenAI API Key", 
-        type="password",
-        value=st.session_state.api_key,
-        help="Your API key will be stored in your session and not saved on our servers."
-    )
+    # Check if API key already exists in session state or secrets
+    api_key_exists = st.session_state.api_key != ""
     
-    # Save the API key to session state if it's valid
-    if api_key:
-        if api_key.startswith("sk-"):
-            st.session_state.api_key = api_key
-        else:
-            st.error("Please enter a valid OpenAI API key starting with 'sk-'")
-            st.session_state.api_key = ""
-    
-    # Check if API key is available
-    if not st.session_state.api_key:
-        st.warning("⚠️ Please enter your OpenAI API key to use this app.")
-        st.info("""
-        You need an OpenAI API key with access to GPT-4 Vision models.
-        Get your API key from [OpenAI's website](https://platform.openai.com/api-keys).
+    # Only show API key input if not already available
+    if not api_key_exists:
+        # Simple API key input at the top
+        api_key = st.text_input(
+            "OpenAI API Key", 
+            type="password",
+            value=st.session_state.api_key,
+            help="Your API key will be stored in your session and not saved on our servers."
+        )
         
-        Your API key will only be used for this session and is not stored on our servers.
-        """)
-        return
+        # Save the API key to session state if it's valid
+        if api_key:
+            if api_key.startswith("sk-"):
+                st.session_state.api_key = api_key
+            else:
+                st.error("Please enter a valid OpenAI API key starting with 'sk-'")
+                st.session_state.api_key = ""
+                
+        # Check if API key is available
+        if not st.session_state.api_key:
+            st.warning("⚠️ Please enter your OpenAI API key to use this app.")
+            st.info("""
+            You need an OpenAI API key with access to GPT-4 Vision models.
+            Get your API key from [OpenAI's website](https://platform.openai.com/api-keys).
+            
+            Your API key will only be used for this session and is not stored on our servers.
+            """)
+            return
+    else:
+        # Show a success message that API key is configured
+        st.success("✅ OpenAI API key configured successfully.")
     
     # File uploader
     uploaded_file = st.file_uploader("Choose a video file", type=["mp4", "mov", "avi", "mkv"])
