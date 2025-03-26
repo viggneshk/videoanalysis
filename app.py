@@ -211,6 +211,14 @@ def get_model_info(model_name):
 def main():
     st.set_page_config(page_title="Video Analysis with OpenAI", page_icon="🎬", layout="wide")
     
+    # Force reload API key from secrets on first run
+    # This helps ensure we pick up changes to secrets configuration
+    if 'first_load' not in st.session_state:
+        st.session_state.first_load = True
+        # Clear API key so we reload from secrets
+        if 'api_key' in st.session_state:
+            del st.session_state.api_key
+    
     # Initialize session state for tracking values
     if 'max_frames' not in st.session_state:
         st.session_state.max_frames = 10
@@ -223,10 +231,14 @@ def main():
     if 'show_comparison' not in st.session_state:
         st.session_state.show_comparison = False
     if 'api_key' not in st.session_state:
-        # Try to get API key from Streamlit secrets first
+        # Try to get API key from Streamlit secrets - handle different formats
         try:
+            # First check for nested format with 'openai' section
             if hasattr(st, 'secrets') and 'openai' in st.secrets and 'OPENAI_API_KEY' in st.secrets.openai:
                 st.session_state.api_key = st.secrets.openai.OPENAI_API_KEY
+            # Then check for direct API key at top level
+            elif hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
+                st.session_state.api_key = st.secrets.OPENAI_API_KEY
             else:
                 st.session_state.api_key = ""
         except:
@@ -266,6 +278,36 @@ def main():
     
     # Only show API key input if not already available
     if not api_key_exists:
+        # Debug info in a collapsible section
+        with st.expander("Debug Information (for troubleshooting)", expanded=False):
+            st.write("Debug: Checking Streamlit Secrets Configuration")
+            if hasattr(st, 'secrets'):
+                available_keys = [key for key in st.secrets.keys()]
+                st.write(f"Available top-level keys: {available_keys}")
+                
+                if 'OPENAI_API_KEY' in st.secrets:
+                    masked_key = st.secrets.OPENAI_API_KEY[:5] + "..." + st.secrets.OPENAI_API_KEY[-4:]
+                    st.write(f"Direct API key found: {masked_key}")
+                
+                if 'openai' in st.secrets:
+                    st.write("'openai' section found")
+                    if hasattr(st.secrets.openai, 'OPENAI_API_KEY'):
+                        nested_key = st.secrets.openai.OPENAI_API_KEY[:5] + "..." + st.secrets.openai.OPENAI_API_KEY[-4:]
+                        st.write(f"Nested API key found: {nested_key}")
+            else:
+                st.write("No Streamlit secrets available")
+                
+            st.write("If you're seeing this debug info, the API key was not loaded properly.")
+            st.write("Instructions for setting up secrets:")
+            st.code("""
+            # For direct API key (what you have now):
+            OPENAI_API_KEY = "sk-your-key-here"
+            
+            # For nested format (what our code checked first):
+            [openai]
+            OPENAI_API_KEY = "sk-your-key-here"
+            """)
+        
         # Simple API key input at the top
         api_key = st.text_input(
             "OpenAI API Key", 
