@@ -8,6 +8,8 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from moviepy.editor import VideoFileClip
 import base64
+import requests
+import json
 
 # Load environment variables
 load_dotenv()
@@ -67,18 +69,6 @@ def encode_image_to_base64(image_array):
 def analyze_video(frames, system_prompt, client_prompt, temperature, api_key, max_api_frames=50, model="gpt-4o"):
     """Analyze video frames using OpenAI's API"""
     
-    # Initialize a new client instance specifically for this analysis
-    # Handle the 'proxies' error by setting specific parameters
-    try:
-        client = OpenAI(api_key=api_key)
-    except TypeError as e:
-        if 'proxies' in str(e):
-            # If there's a proxies error, try without any additional parameters
-            client = OpenAI()
-            client.api_key = api_key
-        else:
-            raise e
-    
     # Limit the number of frames sent to the API
     if len(frames) > max_api_frames:
         # Sample frames evenly
@@ -106,15 +96,48 @@ def analyze_video(frames, system_prompt, client_prompt, temperature, api_key, ma
         },
     ]
     
-    # Make the API call
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=4000,
-    )
-    
-    return response.choices[0].message.content
+    # Try using OpenAI SDK first
+    try:
+        # Set API key in environment variable
+        os.environ["OPENAI_API_KEY"] = api_key
+        
+        # Create a fresh client
+        client = OpenAI()
+        
+        # Make the API call
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=4000,
+        )
+        
+        return response.choices[0].message.content
+    except Exception as e:
+        # If SDK fails, try direct API call with requests
+        try:
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": 4000
+            }
+            
+            response = requests.post(url, headers=headers, json=payload)
+            response_data = response.json()
+            
+            if "choices" in response_data and len(response_data["choices"]) > 0:
+                return response_data["choices"][0]["message"]["content"]
+            else:
+                raise Exception(f"API error: {response_data}")
+        except Exception as req_error:
+            # If both methods fail, raise the original error
+            raise Exception(f"Failed to connect to OpenAI API: {str(e)}\nAttempted direct API call but got: {str(req_error)}")
 
 def estimate_cost(num_frames, avg_tokens_per_frame=765, output_tokens=1000, model="gpt-4o"):
     """Estimate the cost of analyzing frames with OpenAI's API"""
@@ -361,7 +384,7 @@ def main():
         with col1:
             system_prompt = st.text_area(
                 "System Prompt",
-                value="As a youth baseball coach, your primary goal is to provide clear, encouraging, and actionable feedback to help young athletes improve. If an athlete uploads multiple videos, avoid responding with the exact same sentence each time. Even if they need to hear the same feedback, make sure to rephrase it so they’re not reading the same wording over and over.",
+                value="You are a video analysis assistant powered by GPT-4o. Analyze the frames from the video and provide detailed insights.",
                 height=100
             )
             
