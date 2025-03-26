@@ -12,28 +12,6 @@ import base64
 # Load environment variables
 load_dotenv()
 
-# We'll initialize the OpenAI client later in the main function
-# This prevents issues with Streamlit's module loading process
-client = None
-
-def get_openai_client():
-    """Get an initialized OpenAI client with the appropriate API key"""
-    # First check if user has manually entered an API key in the app
-    if 'user_api_key' in st.session_state and st.session_state.user_api_key:
-        return OpenAI(api_key=st.session_state.user_api_key)
-    
-    # Try to get API key from environment variables next
-    api_key = os.environ.get("OPENAI_API_KEY")
-    
-    # If not in environment, try to get from Streamlit secrets
-    if not api_key and hasattr(st, 'secrets') and 'openai' in st.secrets:
-        api_key = st.secrets.openai.OPENAI_API_KEY
-    
-    # Create and return client if we have an API key
-    if api_key:
-        return OpenAI(api_key=api_key)
-    return None
-
 def extract_frames(video_path, max_frames=20, extract_all=False):
     """Extract frames from a video file"""
     video = cv2.VideoCapture(video_path)
@@ -86,15 +64,11 @@ def encode_image_to_base64(image_array):
         with open(temp_file.name, "rb") as img_file:
             return base64.b64encode(img_file.read()).decode('utf-8')
         
-def analyze_video(frames, system_prompt, client_prompt, temperature, max_api_frames=50, model="gpt-4o"):
+def analyze_video(frames, system_prompt, client_prompt, temperature, api_key, max_api_frames=50, model="gpt-4o"):
     """Analyze video frames using OpenAI's API"""
     
-    # Get a fresh client
-    client = get_openai_client()
-    
-    # Check that the client is properly initialized
-    if not client:
-        raise ValueError("OpenAI API key is not set. Please configure it in the app settings.")
+    # Initialize a new client instance specifically for this analysis
+    client = OpenAI(api_key=api_key)
     
     # Limit the number of frames sent to the API
     if len(frames) > max_api_frames:
@@ -212,12 +186,8 @@ def main():
         st.session_state.model = "gpt-4o"
     if 'show_comparison' not in st.session_state:
         st.session_state.show_comparison = False
-    if 'user_api_key' not in st.session_state:
-        st.session_state.user_api_key = ""
-    
-    # Initialize the OpenAI client at runtime
-    global client
-    client = get_openai_client()
+    if 'api_key' not in st.session_state:
+        st.session_state.api_key = ""
     
     # Apply global CSS for a more compact layout
     st.markdown("""
@@ -248,25 +218,25 @@ def main():
     st.title("Video Analysis with OpenAI Vision")
     st.write("Upload a video to analyze it using OpenAI's GPT-4o Vision model.")
     
-    # Check for API key
-    if not client:
-        st.error("⚠️ OpenAI API key not found. Please enter your API key below.")
-        api_key_col1, api_key_col2 = st.columns([3, 1])
-        with api_key_col1:
-            user_api_key = st.text_input(
-                "OpenAI API Key",
-                type="password",
-                value=st.session_state.user_api_key,
-                help="Your API key will be stored in the browser session and not saved on the server."
-            )
-        with api_key_col2:
-            if st.button("Save API Key"):
-                if user_api_key and user_api_key.startswith("sk-"):
-                    st.session_state.user_api_key = user_api_key
-                    st.experimental_rerun()
-                else:
-                    st.error("Please enter a valid OpenAI API key starting with 'sk-'")
+    # Simple API key input at the top
+    api_key = st.text_input(
+        "OpenAI API Key", 
+        type="password",
+        value=st.session_state.api_key,
+        help="Your API key will be stored in your session and not saved on our servers."
+    )
     
+    # Save the API key to session state if it's valid
+    if api_key:
+        if api_key.startswith("sk-"):
+            st.session_state.api_key = api_key
+        else:
+            st.error("Please enter a valid OpenAI API key starting with 'sk-'")
+            st.session_state.api_key = ""
+    
+    # Check if API key is available
+    if not st.session_state.api_key:
+        st.warning("⚠️ Please enter your OpenAI API key to use this app.")
         st.info("""
         You need an OpenAI API key with access to GPT-4 Vision models.
         Get your API key from [OpenAI's website](https://platform.openai.com/api-keys).
@@ -278,7 +248,7 @@ def main():
     # File uploader
     uploaded_file = st.file_uploader("Choose a video file", type=["mp4", "mov", "avi", "mkv"])
     
-    # Cost estimation container (outside the form to update in real-time)
+    # Cost estimation container
     cost_container = st.empty()
     
     # Model comparison toggle
@@ -302,9 +272,9 @@ def main():
         *Note: Costs are relative and actual costs will depend on video length and complexity.*
         """)
     
-    # Real-time parameter controls (outside the form)
+    # Real-time parameter controls
     st.subheader("Analysis Parameters")
-    param_cols = st.columns(4)  # Changed from 3 to 4 columns
+    param_cols = st.columns(4)
     
     with param_cols[0]:
         model = st.selectbox(
@@ -382,7 +352,7 @@ def main():
         with col1:
             system_prompt = st.text_area(
                 "System Prompt",
-                value="As a youth baseball coach, your primary goal is to provide clear, encouraging, and actionable feedback to help young athletes improve. If an athlete uploads multiple videos, avoid responding with the exact same sentence each time. Even if they need to hear the same feedback, make sure to rephrase it so they're not reading the same wording over and over.",
+                value="You are a video analysis assistant powered by GPT-4o. Analyze the frames from the video and provide detailed insights.",
                 height=100
             )
             
@@ -461,7 +431,16 @@ def main():
                     if len(frames) > max_api_frames:
                         st.warning(f"⚠️ {len(frames)} frames were extracted, but only {max_api_frames} will be sent to OpenAI API to stay within limits.")
                     
-                    analysis_result = analyze_video(frames, system_prompt, client_prompt, temperature, max_api_frames, model=model)
+                    # Use the API key from session state
+                    analysis_result = analyze_video(
+                        frames, 
+                        system_prompt, 
+                        client_prompt, 
+                        temperature, 
+                        api_key=st.session_state.api_key, 
+                        max_api_frames=max_api_frames, 
+                        model=model
+                    )
                     
                     # Display results
                     st.success("Analysis complete!")
